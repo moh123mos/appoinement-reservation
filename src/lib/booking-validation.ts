@@ -17,6 +17,18 @@ export function isValidIsoDate(isoDate: string) {
   return !Number.isNaN(parsed.getTime());
 }
 
+export function isPastIsoDate(isoDate: string) {
+  if (!isValidIsoDate(isoDate)) {
+    return false;
+  }
+
+  const candidate = new Date(`${isoDate}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return candidate.getTime() < today.getTime();
+}
+
 export function isValidEmail(email: string) {
   return EMAIL_REGEX.test(email.trim());
 }

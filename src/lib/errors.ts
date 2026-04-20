@@ -42,6 +42,10 @@ function extractConvexErrorData(error: unknown): ConvexErrorData | null {
   return payload;
 }
 
+export function getConvexErrorCode(error: unknown) {
+  return extractConvexErrorData(error)?.code ?? null;
+}
+
 export function toUserErrorMessage(
   error: unknown,
   fallbackMessage = "حدث خطأ غير متوقع، حاول مرة أخرى.",

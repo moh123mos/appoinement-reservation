@@ -1,9 +1,16 @@
 "use client";
 
+import { useMutation, useQuery } from "convex/react";
 import { FormEvent, useMemo, useState } from "react";
-import { clinicMeta, getSlotsForDate, upcomingDates } from "@/lib/booking-data";
-import { validateBookingForm, validateSlotRange } from "@/lib/booking-validation";
-import { toUserErrorMessage } from "@/lib/errors";
+import { api } from "../../../convex/_generated/api";
+import { clinicMeta, upcomingDates } from "@/lib/booking-data";
+import {
+  isPastIsoDate,
+  isValidIsoDate,
+  validateBookingForm,
+  validateSlotRange,
+} from "@/lib/booking-validation";
+import { getConvexErrorCode, toUserErrorMessage } from "@/lib/errors";
 import { formatDateArabic, formatDateEnglish, minuteToTimeLabel } from "@/lib/time";
 
 type BookingFormState = {
@@ -18,20 +25,74 @@ const initialForm: BookingFormState = {
   patientEmail: "",
 };
 
+type ConfirmationState = {
+  appointmentId: string;
+  date: string;
+  startMinute: number;
+  patientName: string;
+  createdAt: number;
+};
+
+const LAST_CONFIRMATION_STORAGE_KEY = "appointment:lastConfirmation";
+
 export function BookingFlow() {
   const [selectedDate, setSelectedDate] = useState<string | null>(upcomingDates[0] ?? null);
   const [selectedStartMinute, setSelectedStartMinute] = useState<number | null>(null);
   const [form, setForm] = useState<BookingFormState>(initialForm);
   const [error, setError] = useState<string | null>(null);
-  const [confirmationCode, setConfirmationCode] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<ConfirmationState | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSeeding, setIsSeeding] = useState(false);
+  const [refreshNonce, setRefreshNonce] = useState(0);
+
+  const demoContext = useQuery(api.seed.getDemoContext);
+  const createAppointment = useMutation(api.appointments.createAppointment);
+  const seedDemoData = useMutation(api.seed.seedDemoData);
 
   const hasDates = upcomingDates.length > 0;
 
+  const slots = useQuery(
+    api.scheduling.getAvailableSlotsForDate,
+    demoContext?.ready && selectedDate
+      ? {
+          tenantId: demoContext.tenantId,
+          clinicId: demoContext.clinicId,
+          doctorUserId: demoContext.doctorUserId,
+          appointmentDate: selectedDate,
+          slotMinutes: demoContext.slotMinutes,
+          refreshNonce,
+        }
+      : "skip",
+  );
+
+  const loadStoredConfirmation = () => {
+    try {
+      const raw = localStorage.getItem(LAST_CONFIRMATION_STORAGE_KEY);
+      if (!raw) {
+        return false;
+      }
+
+      const parsed = JSON.parse(raw) as ConfirmationState;
+      if (parsed?.appointmentId) {
+        setConfirmation(parsed);
+        return true;
+      }
+    } catch {
+      localStorage.removeItem(LAST_CONFIRMATION_STORAGE_KEY);
+    }
+
+    return false;
+  };
+
   const availableSlots = useMemo(
     () =>
-      selectedDate ? getSlotsForDate(selectedDate).filter((slot) => slot.isAvailable) : [],
-    [selectedDate],
+      (slots ?? [])
+        .filter((slot) => slot.isAvailable)
+        .map((slot) => ({
+          ...slot,
+          label: minuteToTimeLabel(slot.startMinute),
+        })),
+    [slots],
   );
 
   const selectedSlot = useMemo(
@@ -40,10 +101,37 @@ export function BookingFlow() {
     [availableSlots, selectedStartMinute],
   );
 
+  const setupDemoData = async () => {
+    try {
+      setError(null);
+      setIsSeeding(true);
+      await seedDemoData({});
+    } catch (unknownError) {
+      setError(toUserErrorMessage(unknownError, "تعذر تجهيز بيانات البداية."));
+    } finally {
+      setIsSeeding(false);
+    }
+  };
+
   const submitBooking = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     try {
+      if (!demoContext?.ready) {
+        setError("بيئة الحجز غير جاهزة حاليا. جهز بيانات البداية أولا.");
+        return;
+      }
+
+      if (!selectedDate || !isValidIsoDate(selectedDate)) {
+        setError("التاريخ المحدد غير صالح.");
+        return;
+      }
+
+      if (isPastIsoDate(selectedDate)) {
+        setError("لا يمكن الحجز في تاريخ سابق.");
+        return;
+      }
+
       if (!selectedSlot) {
         setError("اختر موعدا متاحا قبل التأكيد.");
         return;
@@ -67,12 +155,40 @@ export function BookingFlow() {
       setError(null);
       setIsSubmitting(true);
 
-      setConfirmationCode(
-        `APT-${Math.random().toString(36).slice(2, 6).toUpperCase()}-${Date.now()
-          .toString()
-          .slice(-4)}`,
+      const result = await createAppointment({
+        tenantId: demoContext.tenantId,
+        clinicId: demoContext.clinicId,
+        doctorUserId: demoContext.doctorUserId,
+        appointmentDate: selectedDate,
+        startMinute: selectedSlot.startMinute,
+        slotMinutes: demoContext.slotMinutes,
+        patientName: form.patientName.trim(),
+        patientPhone: form.patientPhone.trim(),
+        patientEmail: form.patientEmail.trim(),
+        source: "guest",
+      });
+
+      const nextConfirmation: ConfirmationState = {
+        appointmentId: result.appointmentId,
+        date: selectedDate,
+        startMinute: selectedSlot.startMinute,
+        patientName: form.patientName.trim(),
+        createdAt: Date.now(),
+      };
+
+      localStorage.setItem(
+        LAST_CONFIRMATION_STORAGE_KEY,
+        JSON.stringify(nextConfirmation),
       );
+
+      setConfirmation(nextConfirmation);
     } catch (unknownError) {
+      const errorCode = getConvexErrorCode(unknownError);
+      if (errorCode === "SLOT_CONFLICT" || errorCode === "DUPLICATE_BOOKING") {
+        setSelectedStartMinute(null);
+        setRefreshNonce((prev) => prev + 1);
+      }
+
       setError(toUserErrorMessage(unknownError));
     } finally {
       setIsSubmitting(false);
@@ -87,6 +203,36 @@ export function BookingFlow() {
         <p className="mt-2 text-sm text-slate-600">
           راجع إعدادات التقويم والجدول الزمني في بيانات العيادة ثم أعد المحاولة.
         </p>
+      </section>
+    );
+  }
+
+  if (demoContext === undefined) {
+    return (
+      <section className="rounded-3xl border border-slate-200/80 bg-white/95 p-6 shadow-lg shadow-slate-300/30 md:p-8">
+        <p className="text-sm font-semibold tracking-[0.12em] uppercase text-slate-500">Patient Booking</p>
+        <h2 className="mt-3 text-2xl font-semibold text-slate-900">جاري تهيئة بيانات الحجز</h2>
+        <p className="mt-2 text-sm text-slate-600">يتم الآن تحميل إعدادات العيادة والمواعيد المتاحة من النظام.</p>
+      </section>
+    );
+  }
+
+  if (!demoContext.ready) {
+    return (
+      <section className="rounded-3xl border border-amber-200/90 bg-amber-50 p-6 shadow-lg shadow-amber-100/70 md:p-8">
+        <p className="text-sm font-semibold tracking-[0.12em] uppercase text-amber-700">Patient Booking</p>
+        <h2 className="mt-3 text-2xl font-semibold text-amber-900">البيانات الأولية غير جاهزة</h2>
+        <p className="mt-2 text-sm text-amber-800">
+          يلزم تشغيل إعداد بيانات الديمو مرة واحدة قبل بدء الحجز الحي.
+        </p>
+        <button
+          type="button"
+          onClick={setupDemoData}
+          disabled={isSeeding}
+          className="mt-4 rounded-xl bg-amber-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-amber-800 disabled:opacity-60"
+        >
+          {isSeeding ? "جاري تجهيز البيانات..." : "تجهيز بيانات البداية"}
+        </button>
       </section>
     );
   }
@@ -114,7 +260,7 @@ export function BookingFlow() {
                   onClick={() => {
                     setSelectedDate(date);
                     setSelectedStartMinute(null);
-                    setConfirmationCode(null);
+                    setConfirmation(null);
                     setError(null);
                   }}
                   className={`rounded-xl border px-3 py-2 text-right transition ${
@@ -133,29 +279,35 @@ export function BookingFlow() {
 
         <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
           <h3 className="text-sm font-semibold tracking-[0.12em] uppercase text-slate-500">2. الوقت</h3>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            {availableSlots.map((slot) => {
-              const isActive = selectedStartMinute === slot.startMinute;
-              return (
-                <button
-                  key={slot.startMinute}
-                  type="button"
-                  onClick={() => {
-                    setSelectedStartMinute(slot.startMinute);
-                    setConfirmationCode(null);
-                  }}
-                  className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${
-                    isActive
-                      ? "border-emerald-500 bg-emerald-50 text-emerald-900"
-                      : "border-slate-200 bg-white text-slate-700 hover:border-emerald-300"
-                  }`}
-                >
-                  {slot.label}
-                </button>
-              );
-            })}
-          </div>
-          {availableSlots.length === 0 ? (
+          {slots === undefined ? (
+            <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700">
+              جاري تحميل المواعيد المتاحة...
+            </p>
+          ) : (
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {availableSlots.map((slot) => {
+                const isActive = selectedStartMinute === slot.startMinute;
+                return (
+                  <button
+                    key={slot.startMinute}
+                    type="button"
+                    onClick={() => {
+                      setSelectedStartMinute(slot.startMinute);
+                      setConfirmation(null);
+                    }}
+                    className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${
+                      isActive
+                        ? "border-emerald-500 bg-emerald-50 text-emerald-900"
+                        : "border-slate-200 bg-white text-slate-700 hover:border-emerald-300"
+                    }`}
+                  >
+                    {slot.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {slots !== undefined && availableSlots.length === 0 ? (
             <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
               لا توجد مواعيد متاحة في هذا اليوم.
             </p>
@@ -227,7 +379,7 @@ export function BookingFlow() {
             onClick={() => {
               setForm(initialForm);
               setSelectedStartMinute(null);
-              setConfirmationCode(null);
+              setConfirmation(null);
               setError(null);
             }}
             className="rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
@@ -236,15 +388,33 @@ export function BookingFlow() {
           </button>
         </div>
 
-        {confirmationCode ? (
+        {confirmation ? (
           <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-            <p className="text-sm font-semibold text-emerald-800">تم إنشاء حجز مبدئي بنجاح</p>
-            <p className="mt-1 text-sm text-emerald-700">كود التأكيد: {confirmationCode}</p>
+            <p className="text-sm font-semibold text-emerald-800">تم تأكيد الحجز بنجاح</p>
+            <p className="mt-1 text-sm text-emerald-700">مرجع الحجز: {confirmation.appointmentId}</p>
             <p className="mt-1 text-xs text-emerald-700">
-              في المرحلة القادمة سنربطه مباشرة بـ Convex Mutation لإدخال الموعد الفعلي.
+              {formatDateArabic(confirmation.date)} - {minuteToTimeLabel(confirmation.startMinute)}
             </p>
           </div>
-        ) : null}
+        ) : (
+          <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm text-slate-700">لا يوجد مرجع حجز ظاهر حاليا.</p>
+            <button
+              type="button"
+              onClick={() => {
+                const loaded = loadStoredConfirmation();
+                if (!loaded) {
+                  setError("لا يوجد مرجع محفوظ حاليا.");
+                } else {
+                  setError(null);
+                }
+              }}
+              className="mt-3 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              استرجاع آخر مرجع محفوظ
+            </button>
+          </div>
+        )}
       </form>
     </section>
   );

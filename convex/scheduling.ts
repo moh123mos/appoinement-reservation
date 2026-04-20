@@ -18,6 +18,7 @@ export const getAvailableSlotsForDate = query({
     doctorUserId: v.id("users"),
     appointmentDate: v.string(),
     slotMinutes: v.optional(v.number()),
+    refreshNonce: v.optional(v.number()),
   },
   handler: async ({ db }, args) => {
     assertIsoDate(args.appointmentDate);
