@@ -43,10 +43,13 @@ export function BookingFlow() {
   const [confirmation, setConfirmation] = useState<ConfirmationState | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [isJoiningWaitlist, setIsJoiningWaitlist] = useState(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const [waitlistReference, setWaitlistReference] = useState<string | null>(null);
 
   const demoContext = useQuery(api.seed.getDemoContext);
   const createAppointment = useMutation(api.appointments.createAppointment);
+  const addWaitlistEntry = useMutation(api.appointments.addWaitlistEntry);
   const seedDemoData = useMutation(api.seed.seedDemoData);
 
   const hasDates = upcomingDates.length > 0;
@@ -153,6 +156,7 @@ export function BookingFlow() {
       }
 
       setError(null);
+      setWaitlistReference(null);
       setIsSubmitting(true);
 
       const result = await createAppointment({
@@ -192,6 +196,53 @@ export function BookingFlow() {
       setError(toUserErrorMessage(unknownError));
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const joinWaitlist = async () => {
+    try {
+      if (!demoContext?.ready) {
+        setError("بيئة الحجز غير جاهزة حاليا. جهز بيانات البداية أولا.");
+        return;
+      }
+
+      if (!selectedDate || !isValidIsoDate(selectedDate)) {
+        setError("اختر تاريخا صالحا للانضمام لقائمة الانتظار.");
+        return;
+      }
+
+      if (isPastIsoDate(selectedDate)) {
+        setError("لا يمكن الانضمام لقائمة انتظار في تاريخ سابق.");
+        return;
+      }
+
+      const formError = validateBookingForm(form);
+      if (formError) {
+        setError(formError);
+        return;
+      }
+
+      setError(null);
+      setConfirmation(null);
+      setIsJoiningWaitlist(true);
+
+      const result = await addWaitlistEntry({
+        tenantId: demoContext.tenantId,
+        clinicId: demoContext.clinicId,
+        doctorUserId: demoContext.doctorUserId,
+        patientName: form.patientName.trim(),
+        patientPhone: form.patientPhone.trim(),
+        patientEmail: form.patientEmail.trim(),
+        desiredDate: selectedDate,
+        preferredStartMinute: selectedSlot?.startMinute,
+        preferredEndMinute: selectedSlot?.endMinute,
+      });
+
+      setWaitlistReference(result.waitlistEntryId);
+    } catch (unknownError) {
+      setError(toUserErrorMessage(unknownError, "تعذر إضافة الطلب إلى قائمة الانتظار."));
+    } finally {
+      setIsJoiningWaitlist(false);
     }
   };
 
@@ -368,18 +419,27 @@ export function BookingFlow() {
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || isJoiningWaitlist}
             className="rounded-xl bg-cyan-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-cyan-800"
           >
             {isSubmitting ? "جاري التأكيد..." : "تأكيد الحجز"}
           </button>
           <button
             type="button"
-            disabled={isSubmitting}
+            onClick={joinWaitlist}
+            disabled={isSubmitting || isJoiningWaitlist}
+            className="rounded-xl border border-blue-300 bg-blue-50 px-5 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:opacity-60"
+          >
+            {isJoiningWaitlist ? "جاري الإضافة..." : "الانضمام لقائمة الانتظار"}
+          </button>
+          <button
+            type="button"
+            disabled={isSubmitting || isJoiningWaitlist}
             onClick={() => {
               setForm(initialForm);
               setSelectedStartMinute(null);
               setConfirmation(null);
+              setWaitlistReference(null);
               setError(null);
             }}
             className="rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
@@ -387,6 +447,14 @@ export function BookingFlow() {
             إعادة تعيين
           </button>
         </div>
+
+        {waitlistReference ? (
+          <div className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 p-4">
+            <p className="text-sm font-semibold text-blue-800">تمت إضافتك إلى قائمة الانتظار</p>
+            <p className="mt-1 text-sm text-blue-700">مرجع قائمة الانتظار: {waitlistReference}</p>
+            <p className="mt-1 text-xs text-blue-700">سيتم التواصل معك تلقائيا عند توفر موعد مناسب.</p>
+          </div>
+        ) : null}
 
         {confirmation ? (
           <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">

@@ -39,6 +39,7 @@ export default function StaffDashboardPage() {
   const [selectedDoctorId, setSelectedDoctorId] = useState<"all" | string>("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [pendingIds, setPendingIds] = useState<Record<string, boolean>>({});
   const [optimisticById, setOptimisticById] = useState<Record<string, OptimisticPatch>>({});
@@ -46,6 +47,7 @@ export default function StaffDashboardPage() {
   const demoContext = useQuery(api.seed.getDemoContext);
   const cancelAppointment = useMutation(api.appointments.cancelAppointment);
   const markAppointmentNoShow = useMutation(api.appointments.markAppointmentNoShow);
+  const addWaitlistEntry = useMutation(api.appointments.addWaitlistEntry);
 
   const appointments = useQuery(
     api.appointments.listDailySchedule,
@@ -55,6 +57,22 @@ export default function StaffDashboardPage() {
           clinicId: demoContext.clinicId,
           appointmentDate: selectedDate,
           refreshNonce,
+        }
+      : "skip",
+  );
+
+  const activeWaitlist = useQuery(
+    api.appointments.listActiveWaitlist,
+    demoContext?.ready
+      ? {
+          tenantId: demoContext.tenantId,
+          clinicId: demoContext.clinicId,
+          doctorUserId:
+            selectedDoctorId === "all"
+              ? undefined
+              : (selectedDoctorId as Id<"users">),
+          desiredDate: selectedDate,
+          limit: 100,
         }
       : "skip",
   );
@@ -117,6 +135,8 @@ export default function StaffDashboardPage() {
     });
   }, [dashboardRows, searchTerm, selectedDoctorId, selectedSource, selectedStatus]);
 
+  const waitlistRows = activeWaitlist ?? [];
+
   const setRowPending = (appointmentId: string, isPending: boolean) => {
     setPendingIds((prev) => {
       if (!isPending) {
@@ -165,6 +185,7 @@ export default function StaffDashboardPage() {
     const normalizedReason = reason.trim() || "cancelled_by_staff";
 
     setActionError(null);
+    setActionNotice(null);
     setRowPending(appointmentKey, true);
     applyOptimisticPatch(appointmentKey, {
       status: "cancelled",
@@ -196,6 +217,7 @@ export default function StaffDashboardPage() {
     const appointmentKey = String(appointmentId);
 
     setActionError(null);
+    setActionNotice(null);
     setRowPending(appointmentKey, true);
     applyOptimisticPatch(appointmentKey, {
       status: "no_show",
@@ -214,6 +236,48 @@ export default function StaffDashboardPage() {
       setActionError(toUserErrorMessage(unknownError, "تعذر تحديث الموعد إلى no-show."));
     } finally {
       setRowPending(appointmentKey, false);
+    }
+  };
+
+  const handleAddWaitlistEntry = async () => {
+    if (!demoContext?.ready) {
+      return;
+    }
+
+    const patientName = window.prompt("اسم المريض لإضافة قائمة الانتظار");
+    if (!patientName || !patientName.trim()) {
+      return;
+    }
+
+    const patientPhone = window.prompt("رقم الموبايل", "01");
+    if (!patientPhone || patientPhone.trim().length < 8) {
+      setActionError("رقم الموبايل غير صالح.");
+      return;
+    }
+
+    const patientEmail = window.prompt("البريد الإلكتروني (اختياري)", "") ?? "";
+    const doctorUserId =
+      selectedDoctorId === "all"
+        ? demoContext.doctorUserId
+        : (selectedDoctorId as Id<"users">);
+
+    try {
+      setActionError(null);
+      setActionNotice(null);
+
+      const result = await addWaitlistEntry({
+        tenantId: demoContext.tenantId,
+        clinicId: demoContext.clinicId,
+        doctorUserId,
+        patientName: patientName.trim(),
+        patientPhone: patientPhone.trim(),
+        patientEmail: patientEmail.trim() ? patientEmail.trim() : undefined,
+        desiredDate: selectedDate,
+      });
+
+      setActionNotice(`تمت الإضافة لقائمة الانتظار برقم: ${result.waitlistEntryId}`);
+    } catch (unknownError) {
+      setActionError(toUserErrorMessage(unknownError, "تعذر إضافة المريض لقائمة الانتظار."));
     }
   };
 
@@ -260,6 +324,10 @@ export default function StaffDashboardPage() {
 
       {actionError ? (
         <p className="mb-4 rounded-xl bg-rose-50 px-4 py-2 text-sm text-rose-800">{actionError}</p>
+      ) : null}
+
+      {actionNotice ? (
+        <p className="mb-4 rounded-xl bg-emerald-50 px-4 py-2 text-sm text-emerald-800">{actionNotice}</p>
       ) : null}
 
       <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-4">
@@ -350,6 +418,15 @@ export default function StaffDashboardPage() {
             />
           </label>
         </div>
+        <div className="mt-4 flex justify-end">
+          <button
+            type="button"
+            onClick={handleAddWaitlistEntry}
+            className="rounded-xl border border-sky-300 bg-sky-50 px-4 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-100"
+          >
+            إضافة مريض لقائمة الانتظار
+          </button>
+        </div>
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -371,8 +448,53 @@ export default function StaffDashboardPage() {
         </article>
         <article className="rounded-2xl border border-slate-200 bg-white p-4">
           <p className="text-xs text-slate-500">قائمة الانتظار</p>
-          <p className="mt-1 text-2xl font-semibold text-sky-700">{dashboardSeed.waitingList}</p>
+          <p className="mt-1 text-2xl font-semibold text-sky-700">{waitlistRows.length || dashboardSeed.waitingList}</p>
         </article>
+      </section>
+
+      <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 md:p-5">
+        <h2 className="text-lg font-semibold text-slate-900">قائمة الانتظار النشطة</h2>
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-140 border-collapse text-right text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-slate-500">
+                <th className="px-3 py-2 font-semibold">المرجع</th>
+                <th className="px-3 py-2 font-semibold">المريض</th>
+                <th className="px-3 py-2 font-semibold">التواصل</th>
+                <th className="px-3 py-2 font-semibold">تفضيل التاريخ</th>
+                <th className="px-3 py-2 font-semibold">تفضيل الوقت</th>
+                <th className="px-3 py-2 font-semibold">الحالة</th>
+              </tr>
+            </thead>
+            <tbody>
+              {waitlistRows.length > 0 ? (
+                waitlistRows.map((entry) => (
+                  <tr key={entry._id} className="border-b border-slate-100 last:border-b-0">
+                    <td className="px-3 py-2 font-medium text-slate-700">{entry._id}</td>
+                    <td className="px-3 py-2 text-slate-900">{entry.patientName}</td>
+                    <td className="px-3 py-2 text-slate-700">
+                      <p>{entry.patientPhone}</p>
+                      <p className="text-xs text-slate-500">{entry.patientEmail ?? "-"}</p>
+                    </td>
+                    <td className="px-3 py-2 text-slate-700">{entry.desiredDate ?? "مرن"}</td>
+                    <td className="px-3 py-2 text-slate-700">
+                      {entry.preferredStartMinute !== undefined && entry.preferredEndMinute !== undefined
+                        ? `${minuteToTimeLabel(entry.preferredStartMinute)} - ${minuteToTimeLabel(entry.preferredEndMinute)}`
+                        : "مرن"}
+                    </td>
+                    <td className="px-3 py-2 text-slate-700">{entry.status}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={6} className="px-3 py-6 text-center text-sm text-slate-500">
+                    لا يوجد طلبات نشطة في قائمة الانتظار لهذا اليوم.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 md:p-5">

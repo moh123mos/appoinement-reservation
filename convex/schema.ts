@@ -140,12 +140,14 @@ export default defineSchema({
     ),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_tenant_clinic_doctor_status", [
-    "tenantId",
-    "clinicId",
-    "doctorUserId",
-    "status",
-  ]),
+  })
+    .index("by_tenant_clinic_doctor_status", [
+      "tenantId",
+      "clinicId",
+      "doctorUserId",
+      "status",
+    ])
+    .index("by_tenant_clinic_status", ["tenantId", "clinicId", "status"]),
 
   notificationLogs: defineTable({
     tenantId: v.id("tenants"),
