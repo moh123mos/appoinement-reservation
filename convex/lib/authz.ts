@@ -11,6 +11,35 @@ type Scope = {
   clinicId: Id<"clinics">;
 };
 
+function allowDevelopmentAuthFallback() {
+  const appEnv = process.env.NEXT_PUBLIC_APP_ENV ?? "development";
+  const hasIssuer = Boolean(process.env.CONVEX_AUTH_ISSUER_URL);
+  return appEnv === "development" && !hasIssuer;
+}
+
+async function resolveFallbackUserForScope(
+  ctx: AuthCtx,
+  args: Scope & { allowedRoles: AppUserRole[] },
+) {
+  if (!allowDevelopmentAuthFallback()) {
+    return null;
+  }
+
+  const candidates = await ctx.db
+    .query("users")
+    .withIndex("by_tenant", (q) => q.eq("tenantId", args.tenantId))
+    .take(64);
+
+  return (
+    candidates.find(
+      (candidate) =>
+        candidate.clinicId === args.clinicId &&
+        candidate.isActive &&
+        args.allowedRoles.includes(candidate.role as AppUserRole),
+    ) ?? null
+  );
+}
+
 async function findUserByTokenIdentifier(ctx: AuthCtx, tokenIdentifier: string) {
   const user = await ctx.db
     .query("users")
@@ -62,7 +91,19 @@ export async function requireRoleInScope(
     allowedRoles: AppUserRole[];
   },
 ) {
-  const user = await requireScopedUser(ctx, {
+  const identity = await ctx.auth.getUserIdentity();
+
+  if (!identity) {
+    const fallbackUser = await resolveFallbackUserForScope(ctx, args);
+    if (fallbackUser) {
+      return fallbackUser;
+    }
+
+    throwAppError("UNAUTHORIZED", "Authentication is required.");
+  }
+
+  const user = await findUserByTokenIdentifier(ctx, identity.tokenIdentifier);
+  ensureScopedUser(user, {
     tenantId: args.tenantId,
     clinicId: args.clinicId,
   });
