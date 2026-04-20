@@ -369,10 +369,10 @@ export default function StaffDashboardPage() {
               className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
             >
               <option value="all">كل الحالات</option>
-              <option value="confirmed">confirmed</option>
-              <option value="cancelled">cancelled</option>
-              <option value="no_show">no_show</option>
-              <option value="completed">completed</option>
+              <option value="confirmed">مؤكدة</option>
+              <option value="cancelled">ملغاة</option>
+              <option value="no_show">عدم الحضور</option>
+              <option value="completed">مكتملة</option>
             </select>
           </label>
 

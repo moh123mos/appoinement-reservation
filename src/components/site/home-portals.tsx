@@ -2,30 +2,30 @@ import Link from "next/link";
 
 const portals = [
   {
-    title: "بوابة المريض",
-    subtitle: "Patient Booking",
+    title: "للعيادات التي تريد نموًا أسرع",
+    subtitle: "Patient Acquisition",
     description:
-      "واجهة حجز مباشرة مع رسائل واضحة في كل خطوة، ودعم قائمة الانتظار عند عدم توفر المواعيد.",
-    cta: "اذهب للحجز",
+      "تجربة حجز بسيطة تزيد معدل التحويل وتمنح المرضى انطباعًا احترافيًا من أول زيارة.",
+    cta: "تجربة مسار المريض",
     href: "/book",
     tone: "emerald",
-    points: ["تأكيد فوري", "مرجع حجز محفوظ", "رسائل أخطاء مفهومة"],
+    points: ["واجهة سريعة", "تأكيد مباشر", "رسائل ثقة واضحة"],
   },
   {
-    title: "بوابة الطاقم",
-    subtitle: "Staff Dashboard",
+    title: "لفرق التشغيل التي تدير ضغط المواعيد",
+    subtitle: "Operations Control",
     description:
-      "لوحة تشغيل يومية لمتابعة الحالات، التصفية السريعة، وإدارة التحديثات التشغيلية بثقة.",
-    cta: "افتح الداشبورد",
+      "لوحة واحدة لفريق الاستقبال والطبيب لمتابعة الجدول، إدارة الحالات، وتقليل الفاقد التشغيلي.",
+    cta: "استكشف لوحة الطاقم",
     href: "/staff/dashboard",
     tone: "orange",
-    points: ["بحث سريع", "إلغاء وno-show", "متابعة قائمة الانتظار"],
+    points: ["بحث ذكي", "إدارة حالة الموعد", "متابعة قائمة الانتظار"],
   },
 ] as const;
 
 export function HomePortals() {
   return (
-    <section id="portals" className="grid gap-4 md:grid-cols-2">
+    <section id="solutions" className="grid gap-4 md:grid-cols-2">
       {portals.map((portal) => {
         const themeClass =
           portal.tone === "emerald"

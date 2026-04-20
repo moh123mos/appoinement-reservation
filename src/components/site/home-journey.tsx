@@ -1,33 +1,33 @@
 const steps = [
   {
-    title: "اختيار اليوم",
-    description: "المريض يبدأ من تقويم بسيط وواضح يعرض الأيام المتاحة فقط.",
+    title: "تحويل أعلى من أول زيارة",
+    description: "واجهة هادئة ومباشرة تقلل التشتت وتدفع الزائر للحجز خلال خطوات قصيرة.",
     number: "01",
   },
   {
-    title: "اختيار الموعد",
-    description: "الفتحات الزمنية تظهر بشكل مباشر مع معالجة التضارب بشكل فوري.",
+    title: "ثقة أكبر في كل موعد",
+    description: "منع التضارب وإظهار المواعيد المتاحة في الوقت الحقيقي يرفع مصداقية العيادة.",
     number: "02",
   },
   {
-    title: "تأكيد البيانات",
-    description: "نموذج مختصر يطلب البيانات الأساسية فقط لتقليل الاحتكاك.",
+    title: "تشغيل أسرع للطاقم",
+    description: "لوحة موحدة للبحث والتصفية وتحديث الحالة تقلل الوقت الضائع يوميًا.",
     number: "03",
   },
   {
-    title: "إدارة التشغيل",
-    description: "فريق العيادة يتابع الحالات ويلغي أو يحدّث الموعد من الداشبورد.",
+    title: "استرجاع مواعيد مهدرة",
+    description: "قائمة انتظار وتذكيرات آلية تساعدك على ملء الفتحات وتقليل الـ no-show.",
     number: "04",
   },
 ];
 
 export function HomeJourney() {
   return (
-    <section id="journey" className="rounded-4xl border border-emerald-100/80 bg-white/80 p-6 md:p-8">
+    <section id="benefits" className="rounded-4xl border border-emerald-100/80 bg-white/80 p-6 md:p-8">
       <header>
-        <p className="text-xs font-semibold tracking-[0.2em] uppercase text-emerald-700">Journey Flow</p>
+        <p className="text-xs font-semibold tracking-[0.2em] uppercase text-emerald-700">Why It Converts</p>
         <h2 className="mt-3 font-(family-name:--font-display) text-3xl text-slate-900 md:text-4xl">
-          رحلة تجربة المستخدم من البداية للنهاية
+          لماذا هذه الصفحة التسويقية تبيع بدل أن تشرح
         </h2>
       </header>
 
