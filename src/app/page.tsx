@@ -1,101 +1,83 @@
 import Link from "next/link";
 import { appConfig, isConvexConfigured } from "@/lib/app-config";
+import { HomeHero } from "@/components/site/home-hero";
+import { HomeJourney } from "@/components/site/home-journey";
+import { HomeNavbar } from "@/components/site/home-navbar";
+import { HomePortals } from "@/components/site/home-portals";
 
 export default function Home() {
   const hasConvexUrl = isConvexConfigured();
 
   return (
-    <main className="flex min-h-screen w-full items-center justify-center px-6 py-14">
-      <section className="w-full max-w-5xl rounded-3xl border border-slate-200/70 bg-white/90 p-8 shadow-xl shadow-slate-200/40 backdrop-blur md:p-10">
-        <p className="text-sm font-semibold tracking-[0.16em] text-sky-700 uppercase">
-          Appointment Reservations
-        </p>
-        <h1 className="mt-4 text-3xl font-semibold tracking-tight text-slate-900 md:text-5xl">
-          Next.js + Tailwind CSS + Convex
-        </h1>
-        <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600 md:text-lg">
-          Project foundation is ready for a doctor appointment SaaS MVP with a
-          web frontend, Tailwind styling system, and Convex as the backend.
-        </p>
+    <>
+      <HomeNavbar hasConvexUrl={hasConvexUrl} />
 
-        <div className="mt-6 flex flex-wrap gap-3">
-          <Link
-            href="/book"
-            className="rounded-xl bg-cyan-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-cyan-800"
-          >
-            ابدأ الحجز كمريض
-          </Link>
-          <Link
-            href="/staff/dashboard"
-            className="rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-          >
-            ادخل لوحة الطاقم
-          </Link>
+      <main className="relative isolate min-h-screen overflow-hidden px-5 py-8 md:px-8">
+        <div className="pointer-events-none absolute inset-0 -z-10 bg-[linear-gradient(130deg,#f7fff8_0%,#fef7ee_48%,#f4f9ff_100%)]" />
+        <div className="pointer-events-none absolute -top-20 right-10 -z-10 h-80 w-80 rounded-full bg-emerald-100/55 blur-3xl" />
+        <div className="pointer-events-none absolute bottom-0 left-0 -z-10 h-72 w-72 rounded-full bg-orange-100/55 blur-3xl" />
+
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+          <HomeHero environment={appConfig.environment} />
+
+          <section id="status" className="rounded-4xl border border-slate-200/80 bg-white/80 p-6 md:p-8">
+            <div className="grid gap-4 md:grid-cols-3">
+              <article className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-semibold tracking-[0.15em] uppercase text-slate-500">حالة Convex</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-900">
+                  {hasConvexUrl ? "Configured" : "Needs Setup"}
+                </p>
+              </article>
+
+              <article className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-semibold tracking-[0.15em] uppercase text-slate-500">اللغة الافتراضية</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-900">
+                  {appConfig.clinicDefaults.locale.toUpperCase()}
+                </p>
+              </article>
+
+              <article className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-semibold tracking-[0.15em] uppercase text-slate-500">مدة الموعد</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-900">
+                  {appConfig.clinicDefaults.slotMinutes} min
+                </p>
+              </article>
+            </div>
+
+            {!hasConvexUrl ? (
+              <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+                ضبط NEXT_PUBLIC_CONVEX_URL في ملف البيئة مطلوب لتشغيل التدفق الحي بالكامل.
+              </p>
+            ) : null}
+          </section>
+
+          <HomeJourney />
+          <HomePortals />
+
+          <section className="rounded-4xl border border-slate-200/80 bg-white/80 p-6 text-center md:p-8">
+            <h2 className="font-(family-name:--font-display) text-3xl text-slate-900 md:text-4xl">
+              جاهز تبدأ تجربة الحجز الجديدة؟
+            </h2>
+            <p className="mt-3 text-base leading-7 text-slate-700">
+              ابدأ من بوابة المريض للحجز المباشر، أو انتقل للوحة الطاقم لإدارة اليوم التشغيلي بسرعة.
+            </p>
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+              <Link
+                href="/book"
+                className="rounded-2xl bg-emerald-700 px-6 py-3 text-sm font-semibold text-white transition hover:bg-emerald-800"
+              >
+                تجربة الحجز الآن
+              </Link>
+              <Link
+                href="/staff/dashboard"
+                className="rounded-2xl border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+              >
+                إدارة جدول العيادة
+              </Link>
+            </div>
+          </section>
         </div>
-
-        <div className="mt-8 grid gap-4 md:grid-cols-3">
-          <article className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-            <h2 className="text-xs font-semibold tracking-[0.12em] text-slate-500 uppercase">
-              Frontend
-            </h2>
-            <p className="mt-2 text-lg font-semibold text-slate-900">Next.js 16 (App Router)</p>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Production-ready React framework for server components, routing,
-              and API integration.
-            </p>
-          </article>
-
-          <article className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-            <h2 className="text-xs font-semibold tracking-[0.12em] text-slate-500 uppercase">
-              Styling
-            </h2>
-            <p className="mt-2 text-lg font-semibold text-slate-900">Tailwind CSS v4</p>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Utility-first styling with design tokens and fast iteration for the
-              booking flows and dashboards.
-            </p>
-          </article>
-
-          <article className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-            <h2 className="text-xs font-semibold tracking-[0.12em] text-slate-500 uppercase">
-              Backend
-            </h2>
-            <p className="mt-2 text-lg font-semibold text-slate-900">Convex</p>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Realtime database, queries, and mutations tailored for appointment
-              scheduling and clinic workflows.
-            </p>
-          </article>
-        </div>
-
-        <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-5">
-          <h2 className="text-lg font-semibold text-slate-900">Setup status</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            Convex URL is {hasConvexUrl ? "configured" : "not configured yet"}.
-          </p>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            Active environment: <span className="font-semibold">{appConfig.environment}</span>
-          </p>
-          <p className="mt-1 text-sm leading-6 text-slate-600">
-            Defaults: {appConfig.clinicDefaults.locale.toUpperCase()} | {appConfig.clinicDefaults.timezone} | {appConfig.clinicDefaults.slotMinutes}-minute slots
-          </p>
-          {!hasConvexUrl ? (
-            <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              Add NEXT_PUBLIC_CONVEX_URL in .env.local after running Convex
-              initialization.
-            </p>
-          ) : null}
-        </section>
-
-        <section className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5">
-          <h2 className="text-lg font-semibold text-slate-900">Implementation progress</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            Booking page and staff dashboard are now implemented as the first
-            vertical slice. Next step is wiring these screens to live Convex
-            queries and mutations.
-          </p>
-        </section>
-      </section>
-    </main>
+      </main>
+    </>
   );
 }

@@ -1,17 +1,19 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Cairo, Markazi_Text } from "next/font/google";
 import { ConvexClientProvider } from "@/components/providers/convex-client-provider";
 import { appConfig } from "@/lib/app-config";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+const cairo = Cairo({
+  variable: "--font-cairo",
+  subsets: ["latin", "arabic"],
+  weight: ["400", "500", "600", "700"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+const markazi = Markazi_Text({
+  variable: "--font-markazi",
+  subsets: ["latin", "arabic"],
+  weight: ["500", "600", "700"],
 });
 
 export const metadata: Metadata = {
@@ -30,7 +32,7 @@ export default function RootLayout({
     <html
       lang={locale}
       dir={locale === "ar" ? "rtl" : "ltr"}
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${cairo.variable} ${markazi.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col text-slate-900">
         <ConvexClientProvider>{children}</ConvexClientProvider>
