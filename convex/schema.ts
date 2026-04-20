@@ -5,6 +5,8 @@ const userRole = v.union(
   v.literal("owner"),
   v.literal("doctor"),
   v.literal("receptionist"),
+  v.literal("patient"),
+  v.literal("system"),
 );
 
 const appointmentStatus = v.union(
@@ -47,6 +49,7 @@ export default defineSchema({
     tenantId: v.id("tenants"),
     clinicId: v.id("clinics"),
     role: userRole,
+    tokenIdentifier: v.optional(v.string()),
     fullName: v.string(),
     email: v.optional(v.string()),
     phone: v.optional(v.string()),
@@ -54,7 +57,8 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_tenant", ["tenantId"])
-    .index("by_tenant_role", ["tenantId", "role"]),
+    .index("by_tenant_role", ["tenantId", "role"])
+    .index("by_token_identifier", ["tokenIdentifier"]),
 
   patients: defineTable({
     tenantId: v.id("tenants"),
@@ -167,6 +171,19 @@ export default defineSchema({
   })
     .index("by_appointment", ["appointmentId"])
     .index("by_status_scheduled", ["status", "scheduledFor"]),
+
+  bookingRateLimits: defineTable({
+    tenantId: v.id("tenants"),
+    clinicId: v.id("clinics"),
+    action: v.union(v.literal("create_appointment"), v.literal("add_waitlist")),
+    key: v.string(),
+    attempts: v.number(),
+    windowStartedAt: v.number(),
+    blockedUntil: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index("by_tenant_clinic_key", ["tenantId", "clinicId", "key"])
+    .index("by_tenant_clinic_action", ["tenantId", "clinicId", "action"]),
 
   auditLogs: defineTable({
     tenantId: v.id("tenants"),

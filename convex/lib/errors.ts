@@ -2,6 +2,7 @@ import { ConvexError } from "convex/values";
 
 export type AppErrorCode =
   | "BAD_REQUEST"
+  | "UNAUTHORIZED"
   | "INVALID_DATE"
   | "INVALID_TIME_RANGE"
   | "INVALID_EMAIL"
@@ -9,7 +10,8 @@ export type AppErrorCode =
   | "SLOT_CONFLICT"
   | "NOT_FOUND"
   | "FORBIDDEN"
-  | "DUPLICATE_BOOKING";
+  | "DUPLICATE_BOOKING"
+  | "RATE_LIMITED";
 
 type AppErrorPayload = {
   code: AppErrorCode;

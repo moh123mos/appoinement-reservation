@@ -13,9 +13,25 @@ import {
   overlaps,
 } from "./lib/bookingValidation";
 import { throwAppError } from "./lib/errors";
+import {
+  enforceBookingRateLimit,
+  insertAuditLog,
+} from "./lib/security";
 
 const NO_SHOW_GRACE_MINUTES = 15;
 const MAX_NOTIFICATION_RETRIES = 3;
+
+function mapSourceToActorRole(source: "guest" | "patient" | "receptionist" | "doctor") {
+  if (source === "doctor") {
+    return "doctor" as const;
+  }
+
+  if (source === "receptionist") {
+    return "receptionist" as const;
+  }
+
+  return "patient" as const;
+}
 
 function appointmentTimeToUnixMs(appointmentDate: string, startMinute: number) {
   const [year, month, day] = appointmentDate.split("-").map(Number);
@@ -130,6 +146,11 @@ export const listDailySchedule = query({
   handler: async ({ db }, args) => {
     assertIsoDate(args.appointmentDate);
 
+    const clinic = await db.get(args.clinicId);
+    if (!clinic || clinic.tenantId !== args.tenantId) {
+      throwAppError("FORBIDDEN", "Clinic does not belong to this tenant.");
+    }
+
     return await db
       .query("appointments")
       .withIndex("by_tenant_clinic_date_start", (q) =>
@@ -172,6 +193,36 @@ export const createAppointment = mutation({
     if (!args.patientName.trim()) {
       throwAppError("BAD_REQUEST", "patientName is required.");
     }
+
+    const clinic = await db.get(args.clinicId);
+    if (!clinic || clinic.tenantId !== args.tenantId || !clinic.isActive) {
+      throwAppError("FORBIDDEN", "Clinic is invalid or inactive.");
+    }
+
+    const doctor = await db.get(args.doctorUserId);
+    if (
+      !doctor ||
+      doctor.tenantId !== args.tenantId ||
+      doctor.clinicId !== args.clinicId ||
+      doctor.role !== "doctor" ||
+      !doctor.isActive
+    ) {
+      throwAppError("FORBIDDEN", "Doctor does not belong to this clinic.");
+    }
+
+    if (args.patientId) {
+      const patient = await db.get(args.patientId);
+      if (!patient || patient.tenantId !== args.tenantId || patient.clinicId !== args.clinicId) {
+        throwAppError("FORBIDDEN", "Patient does not belong to this clinic.");
+      }
+    }
+
+    await enforceBookingRateLimit(ctx, {
+      tenantId: args.tenantId,
+      clinicId: args.clinicId,
+      action: "create_appointment",
+      phone: args.patientPhone,
+    });
 
     const slotMinutes = args.slotMinutes ?? 15;
     assertSlotDuration(slotMinutes);
@@ -252,6 +303,23 @@ export const createAppointment = mutation({
       hasEmail: Boolean(args.patientEmail),
     });
 
+    await insertAuditLog(ctx, {
+      tenantId: args.tenantId,
+      clinicId: args.clinicId,
+      actorRole: mapSourceToActorRole(args.source),
+      action: "appointment_created",
+      entityType: "appointment",
+      entityId: String(appointmentId),
+      metadata: {
+        doctorUserId: args.doctorUserId,
+        appointmentDate: args.appointmentDate,
+        startMinute: candidateRange.startMinute,
+        source: args.source,
+        patientPhone: args.patientPhone,
+        patientEmail: args.patientEmail,
+      },
+    });
+
     return { appointmentId };
   },
 });
@@ -279,11 +347,26 @@ export const cancelAppointment = mutation({
       return { cancelled: false, reason: "already_cancelled" };
     }
 
+    const now = Date.now();
     await db.patch(args.appointmentId, {
       status: "cancelled",
       cancellationReason: args.reason ?? "cancelled_by_user",
-      cancelledAt: Date.now(),
-      updatedAt: Date.now(),
+      cancelledAt: now,
+      updatedAt: now,
+    });
+
+    await insertAuditLog(ctx, {
+      tenantId: args.tenantId,
+      clinicId: args.clinicId,
+      actorRole: "receptionist",
+      action: "appointment_cancelled",
+      entityType: "appointment",
+      entityId: String(args.appointmentId),
+      metadata: {
+        reason: args.reason ?? "cancelled_by_user",
+        patientPhone: appointment.patientPhone,
+        patientEmail: appointment.patientEmail,
+      },
     });
 
     await ctx.scheduler.runAfter(
@@ -308,7 +391,8 @@ export const markAppointmentNoShow = mutation({
     clinicId: v.id("clinics"),
     appointmentId: v.id("appointments"),
   },
-  handler: async ({ db }, args) => {
+  handler: async (ctx, args) => {
+    const { db } = ctx;
     const appointment = await db.get(args.appointmentId);
 
     if (!appointment) {
@@ -328,6 +412,19 @@ export const markAppointmentNoShow = mutation({
       updatedAt: Date.now(),
     });
 
+    await insertAuditLog(ctx, {
+      tenantId: args.tenantId,
+      clinicId: args.clinicId,
+      actorRole: "doctor",
+      action: "appointment_marked_no_show",
+      entityType: "appointment",
+      entityId: String(args.appointmentId),
+      metadata: {
+        patientPhone: appointment.patientPhone,
+        patientEmail: appointment.patientEmail,
+      },
+    });
+
     return { updated: true };
   },
 });
@@ -345,9 +442,44 @@ export const addWaitlistEntry = mutation({
     preferredStartMinute: v.optional(v.number()),
     preferredEndMinute: v.optional(v.number()),
   },
-  handler: async ({ db }, args) => {
+  handler: async (ctx, args) => {
+    const { db } = ctx;
     assertEmail(args.patientEmail);
     assertPhone(args.patientPhone);
+
+    if (!args.patientName.trim()) {
+      throwAppError("BAD_REQUEST", "patientName is required.");
+    }
+
+    const clinic = await db.get(args.clinicId);
+    if (!clinic || clinic.tenantId !== args.tenantId || !clinic.isActive) {
+      throwAppError("FORBIDDEN", "Clinic is invalid or inactive.");
+    }
+
+    const doctor = await db.get(args.doctorUserId);
+    if (
+      !doctor ||
+      doctor.tenantId !== args.tenantId ||
+      doctor.clinicId !== args.clinicId ||
+      doctor.role !== "doctor" ||
+      !doctor.isActive
+    ) {
+      throwAppError("FORBIDDEN", "Doctor does not belong to this clinic.");
+    }
+
+    if (args.patientId) {
+      const patient = await db.get(args.patientId);
+      if (!patient || patient.tenantId !== args.tenantId || patient.clinicId !== args.clinicId) {
+        throwAppError("FORBIDDEN", "Patient does not belong to this clinic.");
+      }
+    }
+
+    await enforceBookingRateLimit(ctx, {
+      tenantId: args.tenantId,
+      clinicId: args.clinicId,
+      action: "add_waitlist",
+      phone: args.patientPhone,
+    });
 
     if (args.desiredDate) {
       assertIsoDate(args.desiredDate, "desiredDate");
@@ -390,6 +522,21 @@ export const addWaitlistEntry = mutation({
       updatedAt: now,
     });
 
+    await insertAuditLog(ctx, {
+      tenantId: args.tenantId,
+      clinicId: args.clinicId,
+      actorRole: "patient",
+      action: "waitlist_entry_created",
+      entityType: "waitlistEntry",
+      entityId: String(waitlistEntryId),
+      metadata: {
+        doctorUserId: args.doctorUserId,
+        desiredDate: args.desiredDate,
+        patientPhone: args.patientPhone,
+        patientEmail: args.patientEmail,
+      },
+    });
+
     return { waitlistEntryId };
   },
 });
@@ -410,6 +557,18 @@ export const listActiveWaitlist = query({
     const limit = Math.max(1, Math.min(args.limit ?? 50, 200));
 
     const doctorUserId = args.doctorUserId;
+
+    if (doctorUserId) {
+      const doctor = await db.get(doctorUserId);
+      if (
+        !doctor ||
+        doctor.tenantId !== args.tenantId ||
+        doctor.clinicId !== args.clinicId ||
+        doctor.role !== "doctor"
+      ) {
+        throwAppError("FORBIDDEN", "Doctor does not belong to this clinic.");
+      }
+    }
 
     const waitlistRows = doctorUserId
       ? await db
@@ -501,18 +660,17 @@ export const processWaitlistAfterCancellation = internalMutation({
       updatedAt: Date.now(),
     });
 
-    await ctx.db.insert("auditLogs", {
+    await insertAuditLog(ctx, {
       tenantId: args.tenantId,
       clinicId: args.clinicId,
-      actorRole: "receptionist",
+      actorRole: "system",
       action: "waitlist_candidate_notified",
       entityType: "waitlistEntry",
       entityId: String(candidate._id),
-      metadata: JSON.stringify({
+      metadata: {
         cancelledAppointmentId: args.cancelledAppointmentId,
         appointmentDate: args.appointmentDate,
-      }),
-      createdAt: Date.now(),
+      },
     });
 
     return {
@@ -541,6 +699,15 @@ export const dispatchReminderNotification = internalMutation({
         status: "failed",
         error: "appointment_not_found",
       });
+      await insertAuditLog(ctx, {
+        tenantId: notificationLog.tenantId,
+        clinicId: notificationLog.clinicId,
+        actorRole: "system",
+        action: "reminder_failed",
+        entityType: "notificationLog",
+        entityId: String(notificationLog._id),
+        metadata: { reason: "appointment_not_found" },
+      });
       return { processed: true, status: "failed" };
     }
 
@@ -549,6 +716,15 @@ export const dispatchReminderNotification = internalMutation({
         status: "failed",
         error: "appointment_not_confirmed",
       });
+      await insertAuditLog(ctx, {
+        tenantId: notificationLog.tenantId,
+        clinicId: notificationLog.clinicId,
+        actorRole: "system",
+        action: "reminder_failed",
+        entityType: "notificationLog",
+        entityId: String(notificationLog._id),
+        metadata: { reason: "appointment_not_confirmed" },
+      });
       return { processed: true, status: "failed" };
     }
 
@@ -556,6 +732,15 @@ export const dispatchReminderNotification = internalMutation({
       await ctx.db.patch(notificationLog._id, {
         status: "failed",
         error: "email_not_available",
+      });
+      await insertAuditLog(ctx, {
+        tenantId: notificationLog.tenantId,
+        clinicId: notificationLog.clinicId,
+        actorRole: "system",
+        action: "reminder_failed",
+        entityType: "notificationLog",
+        entityId: String(notificationLog._id),
+        metadata: { reason: "email_not_available" },
       });
       return { processed: true, status: "failed" };
     }
@@ -570,6 +755,15 @@ export const dispatchReminderNotification = internalMutation({
         await ctx.db.patch(notificationLog._id, {
           status: "failed",
           error: "max_retries_reached",
+        });
+        await insertAuditLog(ctx, {
+          tenantId: notificationLog.tenantId,
+          clinicId: notificationLog.clinicId,
+          actorRole: "system",
+          action: "reminder_failed",
+          entityType: "notificationLog",
+          entityId: String(notificationLog._id),
+          metadata: { reason: "max_retries_reached" },
         });
         return { processed: true, status: "failed" };
       }
@@ -595,6 +789,21 @@ export const dispatchReminderNotification = internalMutation({
       sentAt: Date.now(),
       providerMessageId: `sim-${notificationLog.channel}-${Date.now()}`,
       error: "",
+    });
+
+    await insertAuditLog(ctx, {
+      tenantId: notificationLog.tenantId,
+      clinicId: notificationLog.clinicId,
+      actorRole: "system",
+      action: "reminder_sent",
+      entityType: "notificationLog",
+      entityId: String(notificationLog._id),
+      metadata: {
+        channel: notificationLog.channel,
+        template: notificationLog.template,
+        patientPhone: appointment.patientPhone,
+        patientEmail: appointment.patientEmail,
+      },
     });
 
     return { processed: true, status: "sent" };
@@ -625,6 +834,19 @@ export const autoMarkNoShow = internalMutation({
     await ctx.db.patch(args.appointmentId, {
       status: "no_show",
       updatedAt: Date.now(),
+    });
+
+    await insertAuditLog(ctx, {
+      tenantId: args.tenantId,
+      clinicId: args.clinicId,
+      actorRole: "system",
+      action: "appointment_auto_marked_no_show",
+      entityType: "appointment",
+      entityId: String(args.appointmentId),
+      metadata: {
+        patientPhone: appointment.patientPhone,
+        patientEmail: appointment.patientEmail,
+      },
     });
 
     return { updated: true };

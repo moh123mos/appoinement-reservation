@@ -9,6 +9,8 @@ const DEMO_TENANT_NAME = "Demo Clinic";
 const DEMO_CLINIC_NAME = "Main Branch";
 const DEMO_DOCTOR_NAME = "Dr. Ahmed Khaled";
 const DEMO_RECEPTIONIST_NAME = "Mona Hassan";
+const DEMO_DOCTOR_TOKEN = "demo|doctor";
+const DEMO_RECEPTIONIST_TOKEN = "demo|receptionist";
 
 const SAMPLE_PATIENTS = [
   {
@@ -120,6 +122,7 @@ export const seedDemoData = mutation({
         tenantId,
         clinicId: clinic._id,
         role: "doctor",
+        tokenIdentifier: DEMO_DOCTOR_TOKEN,
         fullName: DEMO_DOCTOR_NAME,
         email: "doctor@example.com",
         phone: "+201055555555",
@@ -127,6 +130,11 @@ export const seedDemoData = mutation({
         createdAt: now,
       });
       doctor = await ctx.db.get(doctorId);
+    } else if (doctor.tokenIdentifier !== DEMO_DOCTOR_TOKEN) {
+      await ctx.db.patch(doctor._id, {
+        tokenIdentifier: DEMO_DOCTOR_TOKEN,
+      });
+      doctor = await ctx.db.get(doctor._id);
     }
 
     let receptionist =
@@ -142,6 +150,7 @@ export const seedDemoData = mutation({
         tenantId,
         clinicId: clinic._id,
         role: "receptionist",
+        tokenIdentifier: DEMO_RECEPTIONIST_TOKEN,
         fullName: DEMO_RECEPTIONIST_NAME,
         email: "reception@example.com",
         phone: "+201066666666",
@@ -149,6 +158,11 @@ export const seedDemoData = mutation({
         createdAt: now,
       });
       receptionist = await ctx.db.get(receptionistId);
+    } else if (receptionist.tokenIdentifier !== DEMO_RECEPTIONIST_TOKEN) {
+      await ctx.db.patch(receptionist._id, {
+        tokenIdentifier: DEMO_RECEPTIONIST_TOKEN,
+      });
+      receptionist = await ctx.db.get(receptionist._id);
     }
 
     if (!doctor || !receptionist) {

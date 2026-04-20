@@ -1,5 +1,6 @@
 const ERROR_CODE_MESSAGES_AR: Record<string, string> = {
   BAD_REQUEST: "البيانات المدخلة غير مكتملة.",
+  UNAUTHORIZED: "يجب تسجيل الدخول للمتابعة.",
   INVALID_DATE: "التاريخ المحدد غير صالح.",
   INVALID_TIME_RANGE: "توقيت الموعد غير صالح.",
   INVALID_EMAIL: "صيغة البريد الإلكتروني غير صحيحة.",
@@ -8,6 +9,7 @@ const ERROR_CODE_MESSAGES_AR: Record<string, string> = {
   NOT_FOUND: "العنصر المطلوب غير موجود.",
   FORBIDDEN: "ليس لديك صلاحية لتنفيذ هذا الإجراء.",
   DUPLICATE_BOOKING: "تم تسجيل حجز مشابه بالفعل.",
+  RATE_LIMITED: "تم تجاوز عدد المحاولات المسموح. حاول مرة أخرى لاحقا.",
 };
 
 type ConvexErrorData = {

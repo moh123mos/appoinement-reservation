@@ -5,6 +5,7 @@ import {
   assertSlotDuration,
   overlaps,
 } from "./lib/bookingValidation";
+import { throwAppError } from "./lib/errors";
 
 function getDayOfWeekFromIso(isoDate: string) {
   const day = new Date(`${isoDate}T00:00:00`).getDay();
@@ -22,6 +23,21 @@ export const getAvailableSlotsForDate = query({
   },
   handler: async ({ db }, args) => {
     assertIsoDate(args.appointmentDate);
+
+    const clinic = await db.get(args.clinicId);
+    if (!clinic || clinic.tenantId !== args.tenantId) {
+      throwAppError("FORBIDDEN", "Clinic does not belong to this tenant.");
+    }
+
+    const doctor = await db.get(args.doctorUserId);
+    if (
+      !doctor ||
+      doctor.tenantId !== args.tenantId ||
+      doctor.clinicId !== args.clinicId ||
+      doctor.role !== "doctor"
+    ) {
+      throwAppError("FORBIDDEN", "Doctor does not belong to this clinic.");
+    }
 
     const dayOfWeek = getDayOfWeekFromIso(args.appointmentDate);
     if (dayOfWeek === null) {
