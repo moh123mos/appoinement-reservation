@@ -16,6 +16,7 @@ export const listDailySchedule = query({
     tenantId: v.id("tenants"),
     clinicId: v.id("clinics"),
     appointmentDate: v.string(),
+    refreshNonce: v.optional(v.number()),
   },
   handler: async ({ db }, args) => {
     assertIsoDate(args.appointmentDate);
@@ -171,6 +172,8 @@ export const cancelAppointment = mutation({
 
 export const markAppointmentNoShow = mutation({
   args: {
+    tenantId: v.id("tenants"),
+    clinicId: v.id("clinics"),
     appointmentId: v.id("appointments"),
   },
   handler: async ({ db }, args) => {
@@ -178,6 +181,10 @@ export const markAppointmentNoShow = mutation({
 
     if (!appointment) {
       throwAppError("NOT_FOUND", "Appointment was not found.");
+    }
+
+    if (appointment.tenantId !== args.tenantId || appointment.clinicId !== args.clinicId) {
+      throwAppError("FORBIDDEN", "Appointment does not belong to this clinic.");
     }
 
     if (appointment.status !== "confirmed") {
