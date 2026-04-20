@@ -12,6 +12,7 @@ import {
   assertSlotDuration,
   overlaps,
 } from "./lib/bookingValidation";
+import { requireRoleInScope, resolveOptionalScopedUser } from "./lib/authz";
 import { throwAppError } from "./lib/errors";
 import {
   enforceBookingRateLimit,
@@ -31,6 +32,22 @@ function mapSourceToActorRole(source: "guest" | "patient" | "receptionist" | "do
   }
 
   return "patient" as const;
+}
+
+function resolveExpectedSourceRoles(source: "guest" | "patient" | "receptionist" | "doctor") {
+  if (source === "patient") {
+    return ["patient"];
+  }
+
+  if (source === "receptionist") {
+    return ["receptionist", "owner"];
+  }
+
+  if (source === "doctor") {
+    return ["doctor", "owner"];
+  }
+
+  return [];
 }
 
 function appointmentTimeToUnixMs(appointmentDate: string, startMinute: number) {
@@ -143,8 +160,15 @@ export const listDailySchedule = query({
     appointmentDate: v.string(),
     refreshNonce: v.optional(v.number()),
   },
-  handler: async ({ db }, args) => {
+  handler: async (ctx, args) => {
+    const { db } = ctx;
     assertIsoDate(args.appointmentDate);
+
+    await requireRoleInScope(ctx, {
+      tenantId: args.tenantId,
+      clinicId: args.clinicId,
+      allowedRoles: ["owner", "doctor", "receptionist"],
+    });
 
     const clinic = await db.get(args.clinicId);
     if (!clinic || clinic.tenantId !== args.tenantId) {
@@ -192,6 +216,22 @@ export const createAppointment = mutation({
 
     if (!args.patientName.trim()) {
       throwAppError("BAD_REQUEST", "patientName is required.");
+    }
+
+    const actorUser = await resolveOptionalScopedUser(ctx, {
+      tenantId: args.tenantId,
+      clinicId: args.clinicId,
+    });
+
+    const expectedRoles = resolveExpectedSourceRoles(args.source);
+    if (expectedRoles.length > 0) {
+      if (!actorUser) {
+        throwAppError("UNAUTHORIZED", "Authentication is required for this booking source.");
+      }
+
+      if (!expectedRoles.includes(actorUser.role)) {
+        throwAppError("FORBIDDEN", "Authenticated role does not match booking source.");
+      }
     }
 
     const clinic = await db.get(args.clinicId);
@@ -306,7 +346,8 @@ export const createAppointment = mutation({
     await insertAuditLog(ctx, {
       tenantId: args.tenantId,
       clinicId: args.clinicId,
-      actorRole: mapSourceToActorRole(args.source),
+      actorRole: actorUser ? (actorUser.role as "owner" | "doctor" | "receptionist" | "patient") : mapSourceToActorRole(args.source),
+      actorUserId: actorUser?._id,
       action: "appointment_created",
       entityType: "appointment",
       entityId: String(appointmentId),
@@ -333,6 +374,12 @@ export const cancelAppointment = mutation({
   },
   handler: async (ctx, args) => {
     const { db } = ctx;
+    const actorUser = await requireRoleInScope(ctx, {
+      tenantId: args.tenantId,
+      clinicId: args.clinicId,
+      allowedRoles: ["owner", "doctor", "receptionist"],
+    });
+
     const appointment = await db.get(args.appointmentId);
 
     if (!appointment) {
@@ -358,7 +405,8 @@ export const cancelAppointment = mutation({
     await insertAuditLog(ctx, {
       tenantId: args.tenantId,
       clinicId: args.clinicId,
-      actorRole: "receptionist",
+      actorRole: actorUser.role as "owner" | "doctor" | "receptionist" | "patient",
+      actorUserId: actorUser._id,
       action: "appointment_cancelled",
       entityType: "appointment",
       entityId: String(args.appointmentId),
@@ -393,6 +441,12 @@ export const markAppointmentNoShow = mutation({
   },
   handler: async (ctx, args) => {
     const { db } = ctx;
+    const actorUser = await requireRoleInScope(ctx, {
+      tenantId: args.tenantId,
+      clinicId: args.clinicId,
+      allowedRoles: ["owner", "doctor", "receptionist"],
+    });
+
     const appointment = await db.get(args.appointmentId);
 
     if (!appointment) {
@@ -415,7 +469,8 @@ export const markAppointmentNoShow = mutation({
     await insertAuditLog(ctx, {
       tenantId: args.tenantId,
       clinicId: args.clinicId,
-      actorRole: "doctor",
+      actorRole: actorUser.role as "owner" | "doctor" | "receptionist" | "patient",
+      actorUserId: actorUser._id,
       action: "appointment_marked_no_show",
       entityType: "appointment",
       entityId: String(args.appointmentId),
@@ -441,6 +496,12 @@ export const addWaitlistEntry = mutation({
     desiredDate: v.optional(v.string()),
     preferredStartMinute: v.optional(v.number()),
     preferredEndMinute: v.optional(v.number()),
+    source: v.union(
+      v.literal("guest"),
+      v.literal("patient"),
+      v.literal("receptionist"),
+      v.literal("doctor"),
+    ),
   },
   handler: async (ctx, args) => {
     const { db } = ctx;
@@ -449,6 +510,22 @@ export const addWaitlistEntry = mutation({
 
     if (!args.patientName.trim()) {
       throwAppError("BAD_REQUEST", "patientName is required.");
+    }
+
+    const actorUser = await resolveOptionalScopedUser(ctx, {
+      tenantId: args.tenantId,
+      clinicId: args.clinicId,
+    });
+
+    const expectedRoles = resolveExpectedSourceRoles(args.source);
+    if (expectedRoles.length > 0) {
+      if (!actorUser) {
+        throwAppError("UNAUTHORIZED", "Authentication is required for this waitlist source.");
+      }
+
+      if (!expectedRoles.includes(actorUser.role)) {
+        throwAppError("FORBIDDEN", "Authenticated role does not match waitlist source.");
+      }
     }
 
     const clinic = await db.get(args.clinicId);
@@ -525,7 +602,8 @@ export const addWaitlistEntry = mutation({
     await insertAuditLog(ctx, {
       tenantId: args.tenantId,
       clinicId: args.clinicId,
-      actorRole: "patient",
+      actorRole: actorUser ? (actorUser.role as "owner" | "doctor" | "receptionist" | "patient") : mapSourceToActorRole(args.source),
+      actorUserId: actorUser?._id,
       action: "waitlist_entry_created",
       entityType: "waitlistEntry",
       entityId: String(waitlistEntryId),
@@ -549,10 +627,17 @@ export const listActiveWaitlist = query({
     desiredDate: v.optional(v.string()),
     limit: v.optional(v.number()),
   },
-  handler: async ({ db }, args) => {
+  handler: async (ctx, args) => {
+    const { db } = ctx;
     if (args.desiredDate) {
       assertIsoDate(args.desiredDate, "desiredDate");
     }
+
+    await requireRoleInScope(ctx, {
+      tenantId: args.tenantId,
+      clinicId: args.clinicId,
+      allowedRoles: ["owner", "doctor", "receptionist"],
+    });
 
     const limit = Math.max(1, Math.min(args.limit ?? 50, 200));
 

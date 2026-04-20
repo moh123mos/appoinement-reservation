@@ -273,6 +273,7 @@ export default function StaffDashboardPage() {
         patientPhone: patientPhone.trim(),
         patientEmail: patientEmail.trim() ? patientEmail.trim() : undefined,
         desiredDate: selectedDate,
+        source: "receptionist",
       });
 
       setActionNotice(`تمت الإضافة لقائمة الانتظار برقم: ${result.waitlistEntryId}`);

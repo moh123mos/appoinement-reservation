@@ -59,4 +59,24 @@ if (!Number.isInteger(slotMinutes) || slotMinutes <= 0) {
   process.exit(1);
 }
 
+const authIssuer = entries.get("CONVEX_AUTH_ISSUER_URL") ?? "";
+const authAppId = entries.get("CONVEX_AUTH_APPLICATION_ID") ?? "";
+
+if ((authIssuer && !authAppId) || (!authIssuer && authAppId)) {
+  console.error("CONVEX_AUTH_ISSUER_URL and CONVEX_AUTH_APPLICATION_ID must be set together.");
+  process.exit(1);
+}
+
+if (appEnv !== "development") {
+  if (!authIssuer || !authAppId) {
+    console.error("Auth vars are required outside development: CONVEX_AUTH_ISSUER_URL and CONVEX_AUTH_APPLICATION_ID.");
+    process.exit(1);
+  }
+
+  if (!/^https:\/\//.test(authIssuer)) {
+    console.error("CONVEX_AUTH_ISSUER_URL must be an https URL.");
+    process.exit(1);
+  }
+}
+
 console.log("Environment verification passed.");

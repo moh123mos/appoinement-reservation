@@ -18,13 +18,19 @@ export default function StaffDashboardError({
   }, [error]);
 
   const retry = unstable_retry ?? reset;
+  const isUnauthorized =
+    error.message.includes("UNAUTHORIZED") ||
+    error.message.includes("Authentication is required") ||
+    error.message.includes("Not authenticated");
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col items-center justify-center px-6 py-10 text-center">
       <div className="w-full rounded-3xl border border-amber-200 bg-amber-50 p-8">
         <h1 className="text-2xl font-semibold text-amber-900">تعذر تحميل لوحة الطاقم</h1>
         <p className="mt-3 text-sm text-amber-800">
-          تعذر جلب بيانات التشغيل الحالية. أعد المحاولة بعد ثوان.
+          {isUnauthorized
+            ? "لوحة الطاقم تتطلب تسجيل دخول بحساب staff بعد إعداد موفر المصادقة."
+            : "تعذر جلب بيانات التشغيل الحالية. أعد المحاولة بعد ثوان."}
         </p>
         <button
           type="button"

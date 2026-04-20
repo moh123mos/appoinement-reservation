@@ -236,6 +236,7 @@ export function BookingFlow() {
         desiredDate: selectedDate,
         preferredStartMinute: selectedSlot?.startMinute,
         preferredEndMinute: selectedSlot?.endMinute,
+        source: "guest",
       });
 
       setWaitlistReference(result.waitlistEntryId);

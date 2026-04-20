@@ -10,6 +10,7 @@
 
 import type * as appointments from "../appointments.js";
 import type * as auth from "../auth.js";
+import type * as lib_authz from "../lib/authz.js";
 import type * as lib_bookingValidation from "../lib/bookingValidation.js";
 import type * as lib_errors from "../lib/errors.js";
 import type * as lib_security from "../lib/security.js";
@@ -25,6 +26,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   appointments: typeof appointments;
   auth: typeof auth;
+  "lib/authz": typeof lib_authz;
   "lib/bookingValidation": typeof lib_bookingValidation;
   "lib/errors": typeof lib_errors;
   "lib/security": typeof lib_security;
